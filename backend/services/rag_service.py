@@ -1,29 +1,30 @@
 import os
-from chromadb import PersistentClient
-from sentence_transformers import SentenceTransformer
 
 _chroma = None
 _embedder = None
 
-def get_chroma_client() -> PersistentClient:
+def get_chroma_client() -> "PersistentClient":
     """
     Lazily initializes and returns the ChromaDB persistent client.
     """
     global _chroma
     if _chroma is None:
+        from chromadb import PersistentClient
         path = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
         # Ensure directories exist
         os.makedirs(path, exist_ok=True)
         _chroma = PersistentClient(path=path)
     return _chroma
 
-def get_embedder() -> SentenceTransformer:
+def get_embedder() -> "SentenceTransformer":
     """
     Lazily initializes and returns the sentence-transformers model.
     """
     global _embedder
     if _embedder is None:
+        from sentence_transformers import SentenceTransformer
         model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        print("Loading embedding model...")
         _embedder = SentenceTransformer(model_name)
     return _embedder
 
