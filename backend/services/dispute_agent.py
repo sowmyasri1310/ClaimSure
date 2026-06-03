@@ -60,12 +60,12 @@ def extract_claim_info(state: DisputeState) -> DisputeState:
     collection_name = state["collection_name"]
     
     # Run multiple queries on report to fetch clinical detail and service dates
-    rep_q1 = hybrid_search(collection_name, "treatment procedure diagnosis patient findings medical recommendation", n_results=3, where={"doc_type": "report"})
-    rep_q2 = hybrid_search(collection_name, "date of surgery date of service admission date discharge date treatment date", n_results=3, where={"doc_type": "report"})
+    rep_q1 = hybrid_search(collection_name, "treatment procedure diagnosis patient findings medical recommendation", n_results=2, where={"doc_type": "report"})
+    rep_q2 = hybrid_search(collection_name, "date of surgery date of service admission date discharge date treatment date", n_results=2, where={"doc_type": "report"})
     
     # Run multiple queries on bill to fetch billing details and rejection codes
-    bill_q1 = hybrid_search(collection_name, "billed amount charge price claim status code denial rejection reason", n_results=3, where={"doc_type": "bill"})
-    bill_q2 = hybrid_search(collection_name, "denial letter date of denial rejection date Clause 2.2 waiting period", n_results=3, where={"doc_type": "bill"})
+    bill_q1 = hybrid_search(collection_name, "billed amount charge price claim status code denial rejection reason", n_results=2, where={"doc_type": "bill"})
+    bill_q2 = hybrid_search(collection_name, "denial letter date of denial rejection date Clause 2.2 waiting period", n_results=2, where={"doc_type": "bill"})
     
     # Deduplicate chunks
     report_chunks = list(dict.fromkeys(rep_q1 + rep_q2))
@@ -104,7 +104,7 @@ def find_policy_clauses(state: DisputeState) -> DisputeState:
     policy_treatment_chunks = hybrid_search(
         collection_name,
         query=f"{treatment} coverage exclusions co-pay deductibles limits criteria benefits",
-        n_results=5,
+        n_results=3,
         where={"doc_type": "policy"}
     )
     
@@ -112,7 +112,7 @@ def find_policy_clauses(state: DisputeState) -> DisputeState:
     policy_general_chunks = hybrid_search(
         collection_name,
         query=f"policy issue date effective date inception date waiting period Clause 2.2 exclusion period",
-        n_results=5,
+        n_results=3,
         where={"doc_type": "policy"}
     )
     
@@ -154,13 +154,13 @@ def detect_mismatches(state: DisputeState) -> DisputeState:
     report_chunks = hybrid_search(
         collection_name, 
         query="treatment procedure surgery diagnosis patient findings medical recommendation date of service", 
-        n_results=4, 
+        n_results=2, 
         where={"doc_type": "report"}
     )
     bill_chunks = hybrid_search(
         collection_name, 
         query="billed amount charge price claim status code denial rejection reason service date Clause 2.2 waiting period", 
-        n_results=4, 
+        n_results=2, 
         where={"doc_type": "bill"}
     )
     
@@ -168,7 +168,7 @@ def detect_mismatches(state: DisputeState) -> DisputeState:
     policy_general_chunks = hybrid_search(
         collection_name,
         query="policy issue date effective date inception date waiting period Clause 2.2 exclusion period 01 Jan 2022 24 months",
-        n_results=4,
+        n_results=2,
         where={"doc_type": "policy"}
     )
     
