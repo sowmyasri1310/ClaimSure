@@ -1,3 +1,4 @@
+
 # ⚙️ Installation Steps
    1. Start the Backend Server (FastAPI)
       Navigate to the backend directory:
@@ -40,7 +41,9 @@
 
    Set CHROMA_PERSIST_DIRECTORY=/opt/render/project/src/chroma_db for persistent storage and whitelist 0.0.0.0/0 on MongoDB Atlas.
 
+
 # 🔮 Future Improvements
+
 [ ] Automated Mail Dispatch: Direct integration with email clients and speed-post APIs to send dispute letters to insurance ombudsmen instantly from the dashboard.
 
 [ ] OCR Upgrade for Handwritten Bills: Integration of advanced vision models (like multimodal Llama/GPT models) to parse poorly scanned or handwritten doctor prescriptions and bills accurately.
@@ -49,6 +52,7 @@
 
 
 # 🏗️ Architecture Design
+
 System Workflow
 ClaimSure operates via a state-of-the-art Multi-Agent AI system orchestration framework. The state flows sequentially or conditionally across specialized nodes to resolve medical queries and process multi-document insurance audits.
 
@@ -124,6 +128,7 @@ claimsure/
 │
 └── README.md
 
+
 # ✨ Key Features
 Module 1: Medical Triage Engine: Analyzes patient symptoms in natural language, determines urgency levels (Emergency, Urgent, Routine, Home Care), and provides localized medical guidance.
 
@@ -134,6 +139,7 @@ Module 3: Dispute Resolution Engine: Simultaneously audits three distinct docume
 Multilingual Capability: Offers a real-world market advantage in India with interface support for Hindi, Tamil, and Telugu to break down complex insurance jargon.
 
 Citation Grounding: Eradicates LLM hallucinations by tracing every generated claim back to the exact text in the policy, bill, or medical report.
+
 
 # 🔧 Environmental Variables
 To run this application locally or in production, configure the following credentials:
@@ -167,6 +173,7 @@ LANGCHAIN_PROJECT=claimsure
 # 📺 Demo Link
 🎥 Walkthrough Video: 
 
+
 # 🚀 Tech Stack
 Frontend: Next.js 14 (App Router) + Tailwind CSS + Lucide Icons + Supabase Auth
 
@@ -185,6 +192,7 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2)
 AI Agent Workflow: LangGraph (6-node claims auditing state graph)
 
 LLM Evaluation: RAGAS (faithfulness and answer relevancy metrics)
+
 
 # 📊 Evaluation
 The /evaluate endpoint computes factual consistency and answer quality for your RAG checks using RAGAS metrics:
