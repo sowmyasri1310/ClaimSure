@@ -21,11 +21,10 @@ def get_embeddings_api(texts: list[str]) -> tuple[list[list[float]] | None, str 
     Tries to generate embeddings using the Hugging Face Inference API.
     Returns (embeddings, error_message).
     """
-    import urllib.request
-    import urllib.error
-    import json
+    import httpx
+    import os
     
-    model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2").strip()
     if "/" not in model_name:
         url = f"https://api-inference.huggingface.co/models/sentence-transformers/{model_name}"
     else:
@@ -37,26 +36,24 @@ def get_embeddings_api(texts: list[str]) -> tuple[list[list[float]] | None, str 
     # Check if a HF token is configured in the environment
     hf_token = os.getenv("HF_TOKEN")
     if hf_token:
-        headers["Authorization"] = f"Bearer {hf_token}"
+        headers["Authorization"] = f"Bearer {hf_token.strip()}"
         
-    req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers)
-    
     try:
-        # Set a short timeout (e.g., 5 seconds) to avoid hanging
-        with urllib.request.urlopen(req, timeout=5) as response:
-            res = json.loads(response.read().decode("utf-8"))
-            if isinstance(res, list) and len(res) == len(texts):
-                return res, None
-            if isinstance(res, dict) and "error" in res:
-                return None, f"API Error: {res['error']}"
-            return None, f"Unexpected response format: {res}"
-    except urllib.error.HTTPError as e:
-        try:
-            error_body = e.read().decode("utf-8")
-        except Exception:
-            error_body = "Could not read error body"
-        print(f"HF Inference API HTTP error {e.code}: {error_body}")
-        return None, f"HTTP {e.code}: {error_body}"
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post(url, json=data, headers=headers)
+            
+            if resp.status_code == 200:
+                res = resp.json()
+                if isinstance(res, list) and len(res) == len(texts):
+                    return res, None
+                if isinstance(res, dict) and "error" in res:
+                    return None, f"API Error: {res['error']}"
+                return None, f"Unexpected response format: {res}"
+            else:
+                return None, f"HTTP {resp.status_code}: {resp.text}"
+    except httpx.HTTPError as e:
+        print(f"HF Inference API httpx error: {str(e)}")
+        return None, f"HTTP error: {str(e)}"
     except Exception as e:
         print(f"HF Inference API request failed: {str(e)}")
         return None, str(e)
