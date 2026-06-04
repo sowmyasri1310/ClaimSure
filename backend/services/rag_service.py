@@ -37,9 +37,11 @@ def get_embeddings_api(texts: list[str]) -> tuple[list[list[float]] | None, str 
     hf_token = os.getenv("HF_TOKEN")
     if hf_token:
         headers["Authorization"] = f"Bearer {hf_token.strip()}"
-        
+    print(f"HF URL = {url}")
+print(f"HF_TOKEN Present = {bool(hf_token)}")
     try:
         with httpx.Client(timeout=10.0) as client:
+            print("Attempting connection to Hugging Face...")
             resp = client.post(url, json=data, headers=headers)
             
             if resp.status_code == 200:
