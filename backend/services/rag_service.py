@@ -16,6 +16,43 @@ def get_chroma_client() -> "PersistentClient":
         _chroma = PersistentClient(path=path)
     return _chroma
 
+def get_embeddings_api(texts: list[str]) -> list[list[float]]:
+    """
+    Tries to generate embeddings using the Hugging Face Inference API.
+    Returns None if the API request fails or is rate-limited.
+    """
+    import urllib.request
+    import json
+    
+    model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    if "/" not in model_name:
+        url = f"https://api-inference.huggingface.co/models/sentence-transformers/{model_name}"
+    else:
+        url = f"https://api-inference.huggingface.co/models/{model_name}"
+        
+    data = {"inputs": texts}
+    headers = {"Content-Type": "application/json"}
+    
+    # Check if a HF token is configured in the environment
+    hf_token = os.getenv("HF_TOKEN")
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+        
+    req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers)
+    
+    try:
+        # Set a short timeout (e.g., 5 seconds) to avoid hanging
+        with urllib.request.urlopen(req, timeout=5) as response:
+            res = json.loads(response.read().decode("utf-8"))
+            if isinstance(res, list) and len(res) == len(texts):
+                return res
+            if isinstance(res, dict) and "error" in res:
+                print(f"HF Inference API returned an error: {res['error']}")
+    except Exception as e:
+        print(f"HF Inference API request failed: {str(e)}")
+        
+    return None
+
 def get_embedder() -> "SentenceTransformer":
     """
     Lazily initializes and returns the sentence-transformers model.
@@ -28,6 +65,17 @@ def get_embedder() -> "SentenceTransformer":
         _embedder = SentenceTransformer(model_name)
     return _embedder
 
+def check_embedding_fallback(operation_name: str):
+    """
+    Checks if local SentenceTransformer fallback is disabled to prevent OOM crash.
+    """
+    if os.getenv("RENDER") or os.getenv("DISABLE_LOCAL_EMBEDDING", "false").lower() == "true":
+        raise RuntimeError(
+            f"Hugging Face Inference API request failed during {operation_name} (possibly due to rate limits or invalid/missing HF_TOKEN). "
+            "Local SentenceTransformer fallback is disabled on Render/constrained environments to prevent Out-Of-Memory (OOM) crashes. "
+            "Please configure a valid 'HF_TOKEN' environment variable in your Render service settings."
+        )
+
 def embed_chunks(chunks: list[str], collection_name: str, metadata_list: list[dict]):
     """
     Embeds raw text chunks and uploads them to a specific ChromaDB collection.
@@ -36,10 +84,17 @@ def embed_chunks(chunks: list[str], collection_name: str, metadata_list: list[di
         return
         
     chroma = get_chroma_client()
-    embedder = get_embedder()
     
+    # Try Hugging Face Inference API first to save memory (especially on Render Free Tier)
+    embeddings = get_embeddings_api(chunks)
+    
+    if embeddings is None:
+        check_embedding_fallback("document chunk embedding")
+        print("Falling back to local SentenceTransformer for embedding...")
+        embedder = get_embedder()
+        embeddings = embedder.encode(chunks).tolist()
+        
     collection = chroma.get_or_create_collection(collection_name)
-    embeddings = embedder.encode(chunks).tolist()
     
     # Generate unique IDs using doc_type to avoid collisions between documents
     ids = []
@@ -54,10 +109,19 @@ def hybrid_search(collection_name: str, query: str, n_results: int = 5, where: d
     Searches ChromaDB using query embeddings.
     """
     chroma = get_chroma_client()
-    embedder = get_embedder()
     
+    # Try Hugging Face Inference API first to save memory (especially on Render Free Tier)
+    embeddings = get_embeddings_api([query])
+    
+    if embeddings is None:
+        check_embedding_fallback("query embedding search")
+        print("Falling back to local SentenceTransformer for query embedding...")
+        embedder = get_embedder()
+        query_embedding = embedder.encode([query]).tolist()
+    else:
+        query_embedding = embeddings
+        
     collection = chroma.get_or_create_collection(collection_name)
-    query_embedding = embedder.encode([query]).tolist()
     
     results = collection.query(
         query_embeddings=query_embedding,

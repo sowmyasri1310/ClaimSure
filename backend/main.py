@@ -17,12 +17,19 @@ allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
 if allowed_origins_env:
     origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
 else:
-    origins = ["*"]
+    # Standard local development origins (wildcard is not allowed when allow_credentials=True)
+    origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173"
+    ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
