@@ -406,9 +406,13 @@ def detect_mismatches(state: DisputeState) -> DisputeState:
         "You are an insurance claim data extractor. Your task is to extract exact dates and facts "
         "from the provided documents. Do not calculate anything, do not assume, and do not invent any dates. "
         "If a value is not explicitly stated, return null.\n\n"
+        "In particular, distinguish between the current policy/renewal period start date and the original inception/first issued date of the policy:\n"
+        "- policy_period_start_date: The start date of the current policy period or renewal period (e.g. '01 Jan 2024').\n"
+        "- original_inception_date: The date when the policy was first issued or originally became effective (e.g. '01 Jan 2022'). Look for phrases like 'first issued on', 'original inception date', 'originally active since', etc.\n\n"
         "Respond ONLY in this JSON format:\n"
         "{\n"
-        '  "policy_start_date": "Policy inception/issue/effective date (e.g. 01 Jan 2025) or null",\n'
+        '  "policy_period_start_date": "Current policy period/renewal start date or null",\n'
+        '  "original_inception_date": "Original policy inception/first issued date or null",\n'
         '  "waiting_period": "Waiting period duration (e.g. 24 months, 2 years) or null",\n'
         '  "waiting_period_clause": "Clause identifier for the waiting period (e.g. Clause 2.2) or null",\n'
         '  "surgery_date": "Surgery or treatment date (e.g. 10 Aug 2025) or null",\n'
@@ -420,13 +424,23 @@ def detect_mismatches(state: DisputeState) -> DisputeState:
     
     extracted_facts = call_groq_json(extract_prompt, user_message, max_tokens=512)
     
-    policy_start_str = get_case_insensitive(extracted_facts, "policy_start_date")
+    policy_period_start_str = get_case_insensitive(extracted_facts, "policy_period_start_date")
+    original_inception_str = get_case_insensitive(extracted_facts, "original_inception_date")
+    
+    if original_inception_str:
+        policy_start_str = original_inception_str
+    else:
+        policy_start_str = policy_period_start_str
+        
+    print("Policy Period Date:", policy_period_start_str)
+    print("Original Inception Date:", original_inception_str)
+    print("Chosen Policy Start Date:", policy_start_str)
+    
     waiting_period_str = get_case_insensitive(extracted_facts, "waiting_period")
     surgery_date_str = get_case_insensitive(extracted_facts, "surgery_date")
     treatment_covered_str = get_case_insensitive(extracted_facts, "treatment_covered")
     rejection_reason_str = get_case_insensitive(extracted_facts, "rejection_reason")
     wp_clause = get_case_insensitive(extracted_facts, "waiting_period_clause")
-    
     policy_start = parse_date(policy_start_str)
     wp_months = parse_waiting_period_months(waiting_period_str)
     surgery_dt = parse_date(surgery_date_str)
@@ -540,6 +554,16 @@ def detect_mismatches(state: DisputeState) -> DisputeState:
     print(f"\n{node_name.upper()}")
     print(f"Incoming score: {incoming_score}")
     print(f"Outgoing score: {state.get('dispute_score')}\n")
+    print("\n===== FINAL MISMATCH DECISION =====")
+    print("policy_start =", policy_start_str)
+    print("waiting_period =", waiting_period_str)
+    print("surgery_date =", surgery_date_str)
+    print("wp_completion =", wp_completion)
+    print("waiting_period_violation =", waiting_period_violation)
+    print("FINAL mismatch_found =", mismatch_found)
+    print("FINAL explanation =", explanation)
+    print("===================================\n")
+    
     return state
 
 
