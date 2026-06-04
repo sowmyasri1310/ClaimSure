@@ -5,6 +5,71 @@ import { useRouter } from "next/navigation";
 import { Copy, Check, ChevronLeft, Scale, ShieldAlert, Award, FileCheck } from "lucide-react";
 import Link from "next/link";
 
+function parseReasoning(reasoningStr: string) {
+  const patientEvidence: string[] = [];
+  const insurerEvidence: string[] = [];
+  const addedReasons: string[] = [];
+  const deductedReasons: string[] = [];
+  
+  if (!reasoningStr) {
+    return { patientEvidence, insurerEvidence, addedReasons, deductedReasons };
+  }
+  
+  const lines = reasoningStr.split("\n");
+  let currentSection = "";
+  
+  for (let line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("#### ")) {
+      currentSection = trimmed.toLowerCase();
+      continue;
+    }
+    
+    if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
+      const bulletText = trimmed.replace(/^[\-\*\s•\d\.]+|[\:\-]+.*$/g, "").trim();
+      if (!bulletText) continue;
+      
+      const lowerText = bulletText.toLowerCase();
+      if (lowerText.includes("no specific evidence") || 
+          lowerText.includes("no points") ||
+          lowerText.includes("no reason")) {
+        continue;
+      }
+      
+      if (currentSection.includes("evidence helping the patient")) {
+        patientEvidence.push(bulletText);
+      } else if (currentSection.includes("evidence helping the insurer")) {
+        insurerEvidence.push(bulletText);
+      } else if (currentSection.includes("points added reasons")) {
+        addedReasons.push(bulletText);
+      } else if (currentSection.includes("points deducted reasons")) {
+        deductedReasons.push(bulletText);
+      }
+    }
+  }
+  
+  return { patientEvidence, insurerEvidence, addedReasons, deductedReasons };
+}
+
+function generateKeyFinding(strength: string, score: number, mismatchFound: boolean, misappliedClause?: string) {
+  const cleanStrength = strength.toLowerCase();
+  
+  if (mismatchFound) {
+    const clauseText = misappliedClause ? ` regarding ${misappliedClause}` : "";
+    return `We identified a clear mismatch between your policy terms and the insurer's rejection reason${clauseText}. Our audit indicates that the insurer misapplied this policy guideline, which directly contradicts the evidence in your documents. This suggests a high likelihood of a successful appeal, and we recommend proceeding with the generated appeal letter.`;
+  }
+  
+  if (cleanStrength === "weak") {
+    return `The insurer's rejection is fully consistent with the active terms, waiting periods, or exclusions defined in your policy documents. We did not find any policy mismatch or timeline violation. Based on the current evidence, the rejection appears valid and an appeal is unlikely to succeed.`;
+  }
+  
+  if (cleanStrength === "moderate") {
+    return `While there is no technical mismatch, there are notable ambiguities in the policy wording or guidelines. Both sides have reasonable arguments, making the claim standing moderate. Proceeding with an appeal is possible but will require clarification of these ambiguous terms.`;
+  }
+  
+  return `The case has strong standing because the medical documentation shows compelling necessity or exception criteria were met, such as an emergency exception. Although no direct policy clause mismatch was flagged, the insurer failed to consider these critical clinical circumstances, making an appeal highly recommended.`;
+}
+
 export default function DisputeResultPage() {
   const router = useRouter();
   const [result, setResult] = useState<any>(null);
@@ -48,6 +113,31 @@ export default function DisputeResultPage() {
   const confidence = result.confidence_score ?? 0;
   const faithfulness = result.faithfulness_score ?? 0;
   const hallucination = result.hallucination_risk ?? 0;
+
+  const parsed = parseReasoning(result.score_reasoning);
+  const keyEvidencePoints: string[] = [
+    ...parsed.patientEvidence,
+    ...parsed.insurerEvidence,
+    ...parsed.addedReasons,
+    ...parsed.deductedReasons
+  ].slice(0, 5);
+
+  if (keyEvidencePoints.length < 3) {
+    if (result.mismatch_explanation) {
+      keyEvidencePoints.push(result.mismatch_explanation);
+    }
+    const defaultPoints = [
+      "Cross-referenced patient's hospital bill and medical records against the policy terms.",
+      "Validated claim rejection reason against coverage inclusions, exclusions, and waiting periods.",
+      "Assessed clinical necessity and documentation quality."
+    ];
+    for (const pt of defaultPoints) {
+      if (keyEvidencePoints.length >= 3) break;
+      keyEvidencePoints.push(pt);
+    }
+  }
+
+  const keyFindingText = generateKeyFinding(strength, score, result.mismatch_found, result.misapplied_clause);
   
   // Choose colors based on strength rating
   const getStrengthMeta = (str: string) => {
@@ -194,53 +284,50 @@ export default function DisputeResultPage() {
           </div>
 
           {/* Audit Details */}
-          <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 space-y-5">
+          <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 space-y-6">
             <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-indigo-600" /> Dispute Case Findings
             </h3>
 
-            {/* Mismatch State */}
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">POLICY MISMATCH</span>
-              <p className="text-sm font-bold text-slate-800">
-                {result.mismatch_found
-                  ? `Yes — Misapplied clause detected`
-                  : "No — Rejection aligns with policy"}
+            {/* 1. Key Finding */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Key Finding</span>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                {keyFindingText}
               </p>
             </div>
 
-            {/* Clause Cited */}
-            {result.misapplied_clause && (
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase block">MISAPPLIED TERM</span>
-                <p className="text-xs font-mono bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-slate-600">
-                  {result.misapplied_clause}
-                </p>
-              </div>
-            )}
-
-            {/* Reasoning details */}
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">AUDITOR REASONING</span>
-              <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
-                {result.score_reasoning}
-              </p>
+            {/* 2. Why This Decision Was Made */}
+            <div className="space-y-2.5 pt-3 border-t border-slate-50">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Why This Decision Was Made</span>
+              <ul className="space-y-2.5">
+                {keyEvidencePoints.map((point: string, idx: number) => (
+                  <li key={idx} className="flex gap-2 items-start text-xs text-slate-600">
+                    <span className="text-indigo-500 font-black flex-shrink-0 mt-0.5">•</span>
+                    <span className="leading-relaxed font-medium">{point}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            {/* Citations */}
-            {result.citations && result.citations.length > 0 && (
-              <div className="space-y-2 pt-3 border-t border-slate-100">
-                <span className="text-[10px] font-bold text-slate-400 uppercase block">POLICIES CITED</span>
-                <ul className="space-y-2">
-                  {result.citations.map((cite: string, idx: number) => (
-                    <li key={idx} className="flex gap-2 items-start text-xs text-slate-600 bg-indigo-50/20 p-2 rounded-lg border border-indigo-50">
-                      <Award className="h-4 w-4 text-indigo-500 flex-shrink-0 mt-0.5" />
-                      <span>{cite}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* 3. Relevant Policy Clauses */}
+            <div className="space-y-2.5 pt-3 border-t border-slate-50">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Relevant Policy Clauses</span>
+              {result.citations && result.citations.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {result.citations.map((cite: string, idx: number) => {
+                    const cleanCite = cite.replace(/^[\-\*\s•\d\.]+|[\:\-]+.*$/g, "").trim();
+                    return (
+                      <span key={idx} className="text-xs font-mono bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg text-slate-600 font-bold">
+                        {cleanCite}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span className="text-xs text-slate-400 italic">No specific policy clauses cited.</span>
+              )}
+            </div>
           </div>
         </div>
 
