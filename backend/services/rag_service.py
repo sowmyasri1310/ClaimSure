@@ -1,4 +1,68 @@
 import os
+import socket
+
+# Save the original getaddrinfo
+original_getaddrinfo = socket.getaddrinfo
+
+def resolve_doh(hostname: str) -> str | None:
+    """
+    Resolves a hostname to an IP address using public DoH (DNS over HTTPS) servers.
+    We connect to Google and Cloudflare DNS directly via their IP addresses (8.8.8.8 and 1.1.1.1)
+    to bypass local DNS lookup failures inside container environments.
+    """
+    import urllib.request
+    import json
+    import ssl
+    
+    # Bypass SSL verification to avoid issues with local root CA certificate stores
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    
+    # 1. Try Cloudflare DoH via IP
+    url = f"https://1.1.1.1/dns-query?name={hostname}&type=A"
+    req = urllib.request.Request(url, headers={"Accept": "application/dns-json"})
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            answers = data.get("Answer", [])
+            for ans in answers:
+                if ans.get("type") == 1:  # A record
+                    ip = ans.get("data")
+                    if ip:
+                        return ip
+    except Exception as e:
+        print(f"Cloudflare DoH resolution failed for {hostname}: {e}")
+        
+    # 2. Try Google DoH via IP
+    url = f"https://8.8.8.8/resolve?name={hostname}&type=A"
+    req = urllib.request.Request(url)
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            answers = data.get("Answer", [])
+            for ans in answers:
+                if ans.get("type") == 1:  # A record
+                    ip = ans.get("data")
+                    if ip:
+                        return ip
+    except Exception as e:
+        print(f"Google DoH resolution failed for {hostname}: {e}")
+        
+    return None
+
+def custom_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host in ["api-inference.huggingface.co", "router.huggingface.co"]:
+        ip = resolve_doh(host)
+        if ip:
+            print(f"Custom DNS: Resolved {host} to {ip} via DoH")
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, '', (ip, port))]
+        else:
+            print(f"Custom DNS: DoH resolution failed for {host}, falling back to original resolver")
+    return original_getaddrinfo(host, port, family, type, proto, flags)
+
+# Apply the monkeypatch
+socket.getaddrinfo = custom_getaddrinfo
 
 _chroma = None
 _embedder = None
