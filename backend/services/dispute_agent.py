@@ -682,27 +682,45 @@ def score_dispute(state: DisputeState) -> DisputeState:
         
     system_prompt = (
         "You are an expert insurance dispute coordinator. Your job is to analyze the structured facts of a claim "
-        "and assess semantic evidence and reasoning for each of the following 7 categories. Do not calculate any "
+        "and assess semantic evidence and reasoning for each of the following categories. Do not calculate any "
         "numerical scores; the final score will be calculated deterministically in Python based on your classification.\n\n"
+        "Guidelines for Balanced Evidence Evaluation:\n"
+        "1. Identify and list all Evidence Supporting Patient (clauses, doctor report necessity findings, emergency status, etc.) "
+        "and Evidence Supporting Insurer (exclusions, pre-authorization requirements, dates/waiting periods) separately.\n"
+        "2. Never evaluate a case from only one perspective. Every claim dispute has two sides; you must analyze both.\n"
+        "3. Avoid binary thinking: covered treatment does not automatically guarantee appeal success, and policy exclusions do not automatically guarantee failure. Consider coverage, exclusions, waiting periods, authorization requirements, emergency exceptions, necessity, and documentation quality together.\n"
+        "4. Hallucination Prevention: Never invent dates, waiting periods, clauses, exclusions, or authorizations. If evidence is missing, state it is missing, select the appropriate classification reflecting that, and list it under documentation quality issues.\n\n"
         "Categories to evaluate:\n"
-        "1. Policy Coverage Support:\n"
-        "   - Classification: 'covered' (policy explicitly covers), 'ambiguous' (wording is ambiguous/unclear), or 'excluded' (clearly excluded)\n"
-        "2. Rejection Validity:\n"
-        "   - Classification: 'invalid' (insurer rejection contradicts policy or misapplies guidelines), 'ambiguous', or 'valid' (clearly valid denial)\n"
-        "3. Waiting Period Compliance:\n"
-        "   - Classification: 'satisfied' (waiting period completed or not applicable), or 'violated' (treatment occurred during waiting period)\n"
-        "4. Coverage Strength / Exclusions:\n"
-        "   - Classification: 'no_exclusions' (no exclusions apply), 'ambiguous_exclusions' (exclusions are suggestive/unclear), or 'has_exclusions' (clear exclusions apply)\n"
-        "5. Medical Necessity:\n"
-        "   - Classification: 'strong' (explicitly supported by doctor with clear clinical findings), 'moderate', or 'weak_or_missing'\n"
-        "6. Documentation Quality:\n"
-        "   - Classification: 'complete' (all key documents, dates, and amounts present), 'incomplete_minor', or 'incomplete_major' (critical dates/clauses missing)\n"
-        "7. Clause Contradiction Severity:\n"
-        "   - Classification: 'severe' (direct contradiction between policy and denial), 'moderate', or 'none'\n\n"
-        "Guidelines:\n"
-        "- Distinguish carefully between recommended guidelines and mandatory requirements. Do not convert recommendations into mandatory exclusions.\n"
-        "- Do not guess or invent any details. If evidence is missing, choose the appropriate classification and state that it is missing.\n"
-        "- Provide clear evidence citations for all classifications.\n\n"
+        "1. policy_coverage_support:\n"
+        "   - 'covered': policy explicitly covers treatment.\n"
+        "   - 'ambiguous': policy is silent, ambiguous, or contains conflicting terms.\n"
+        "   - 'excluded': policy explicitly does not cover or excludes treatment.\n"
+        "2. rejection_validity:\n"
+        "   - 'invalid': rejection directly violates policy terms or misapplies guidelines.\n"
+        "   - 'ambiguous': reasonable arguments exist on both sides (e.g., pre-authorization recommended vs. mandatory).\n"
+        "   - 'valid': rejection is clearly valid and supported by policy wording.\n"
+        "3. waiting_period_compliance:\n"
+        "   - 'satisfied': waiting period satisfied or not applicable.\n"
+        "   - 'violated': surgery occurred during waiting period.\n"
+        "4. coverage_strength:\n"
+        "   - 'no_exclusions': no exclusions apply to the treatment.\n"
+        "   - 'ambiguous_exclusions': exclusions might apply but wording is recommended/suggestive or ambiguous.\n"
+        "   - 'has_exclusions': clear, mandatory exclusion clause applies.\n"
+        "5. medical_necessity:\n"
+        "   - 'strong': doctor report explicitly confirms medical necessity with clear clinical findings.\n"
+        "   - 'moderate': doctor report mentions necessity but lacks detail.\n"
+        "   - 'weak_or_missing': necessity findings are missing or extremely weak.\n"
+        "6. documentation_quality:\n"
+        "   - 'complete': policy, bill, and report are fully present with no missing critical data.\n"
+        "   - 'incomplete_minor': some minor details/evidence missing.\n"
+        "   - 'incomplete_major': major documents, critical dates, or key details missing.\n"
+        "7. exception_status:\n"
+        "   - 'met': emergency exception or exception explicitly applies and was met.\n"
+        "   - 'ambiguous': exception might apply but criteria/proof is unclear.\n"
+        "   - 'none': no exception applies or exception criteria unmet.\n"
+        "8. undeniable_insurer_error:\n"
+        "   - 'yes': extremely obvious insurer error (clerical, math, or factual error) with undeniable documentary proof.\n"
+        "   - 'no': standard dispute.\n\n"
         "Respond ONLY in this JSON format:\n"
         "{\n"
         '  "policy_coverage_support": "covered" | "ambiguous" | "excluded",\n'
@@ -717,14 +735,15 @@ def score_dispute(state: DisputeState) -> DisputeState:
         '  "medical_necessity_reason": "explanation citing doctor report medical necessity findings",\n'
         '  "documentation_quality": "complete" | "incomplete_minor" | "incomplete_major",\n'
         '  "documentation_quality_reason": "explanation of what documents/dates are present or missing",\n'
-        '  "contradiction_severity": "severe" | "moderate" | "none",\n'
-        '  "contradiction_severity_reason": "explanation of any direct contradiction between rejection and policy/report",\n'
+        '  "exception_status": "met" | "ambiguous" | "none",\n'
+        '  "exception_status_reason": "explanation of any emergency or exception clause application",\n'
+        '  "undeniable_insurer_error": "yes" | "no",\n'
         '  "evidence_helping_patient": ["patient-supporting point 1 with citation", "patient-supporting point 2 with citation"],\n'
         '  "evidence_helping_insurer": ["insurer-supporting point 1 with citation", "insurer-supporting point 2 with citation"],\n'
         '  "points_added_reasons": ["reason 1 for points added based on facts"],\n'
         '  "points_deducted_reasons": ["reason 1 for points deducted based on facts"]\n'
         "}\n"
-        "Do not include any other text."
+        "Do not include any other text outside the JSON."
     )
         
     user_message = (
@@ -742,10 +761,11 @@ def score_dispute(state: DisputeState) -> DisputeState:
     policy_support_val = result.get("policy_coverage_support", "ambiguous").lower().strip()
     rejection_val = result.get("rejection_validity", "ambiguous").lower().strip()
     waiting_val = result.get("waiting_period_compliance", "satisfied").lower().strip()
-    coverage_val = result.get("coverage_strength", "ambiguous_exclusions").lower().strip()
+    exclusions_val = result.get("coverage_strength", "ambiguous_exclusions").lower().strip()
     necessity_val = result.get("medical_necessity", "weak_or_missing").lower().strip()
     doc_val = result.get("documentation_quality", "incomplete_minor").lower().strip()
-    contradiction_val = result.get("contradiction_severity", "none").lower().strip()
+    exception_val = result.get("exception_status", "none").lower().strip()
+    undeniable_error_val = result.get("undeniable_insurer_error", "no").lower().strip()
 
     # Apply python overrides for a waiting period violation
     # If Python waiting period checks determined a violation, override the LLM classifications to guarantee a low score
@@ -786,8 +806,10 @@ def score_dispute(state: DisputeState) -> DisputeState:
         policy_support_val = "excluded"
         rejection_val = "valid"
         waiting_val = "violated"
-        coverage_val = "has_exclusions"
-        contradiction_val = "none"
+        exclusions_val = "has_exclusions"
+        necessity_val = "strong"  # Keep necessity strong if doctor says so, but override coverage
+        exception_val = "none"
+        undeniable_error_val = "no"
         mismatch_found = False
         state["mismatch_found"] = False
         state["mismatch_explanation"] = (
@@ -797,31 +819,40 @@ def score_dispute(state: DisputeState) -> DisputeState:
             f"Therefore, the insurer's rejection is valid according to the policy terms."
         )
 
-    # Point mappings
-    policy_support_score = 30 if "covered" in policy_support_val else (15 if "ambiguous" in policy_support_val else 0)
-    rejection_score = 20 if "invalid" in rejection_val else (10 if "ambiguous" in rejection_val else 0)
-    waiting_score = 15 if "satisfied" in waiting_val or "not_applicable" in waiting_val or "not applicable" in waiting_val else 0
-    coverage_score = 15 if "no_exclusions" in coverage_val or "no exclusion" in coverage_val else (7 if "ambiguous_exclusions" in coverage_val or "ambiguous" in coverage_val else 0)
-    necessity_score = 10 if "strong" in necessity_val else (5 if "moderate" in necessity_val else 0)
-    doc_score = 10 if "complete" in doc_val and "incomplete" not in doc_val else (5 if "incomplete_minor" in doc_val or "minor" in doc_val else 0)
-    contradiction_score = 10 if "severe" in contradiction_val else (5 if "moderate" in contradiction_val else 0)
+    # Point mappings based on balanced evidence scorecard (baseline 45 + patient points - insurer points)
+    # Patient support points (max +45)
+    policy_support_score = 15 if policy_support_val == "covered" else (7 if policy_support_val == "ambiguous" else 0)
+    rejection_score = 10 if rejection_val == "invalid" else (5 if rejection_val == "ambiguous" else 0)
+    necessity_score = 10 if necessity_val == "strong" else (5 if necessity_val == "moderate" else 0)
+    exception_score = 10 if exception_val == "met" else (5 if exception_val == "ambiguous" else 0)
+    patient_support_score = policy_support_score + rejection_score + necessity_score + exception_score
 
-    # Sum category scores
-    final_score = (
-        policy_support_score +
-        rejection_score +
-        waiting_score +
-        coverage_score +
-        necessity_score +
-        doc_score +
-        contradiction_score
-    )
+    # Insurer support points (max -45)
+    exclusions_score = 15 if exclusions_val in ("has_exclusions", "applies", "explicit") else (7 if exclusions_val in ("ambiguous_exclusions", "ambiguous") else 0)
+    rejection_insurer_score = 10 if rejection_val == "valid" else (5 if rejection_val == "ambiguous" else 0)
+    waiting_score = 10 if waiting_val == "violated" else 0
+    doc_score = 10 if doc_val == "incomplete_major" else (5 if doc_val in ("incomplete_minor", "minor") else 0)
+    insurer_support_score = exclusions_score + rejection_insurer_score + waiting_score + doc_score
+
+    # Baseline score
+    baseline = 45
+    
+    # Undeniable Insurer Error bonus (max +10)
+    error_bonus = 10 if "yes" in undeniable_error_val else 0
+
+    # Calculate final score
+    final_score = baseline + patient_support_score - insurer_support_score + error_bonus
+    
+    # Enforce waiting period violation cap
+    if waiting_period_violation:
+        final_score = min(final_score, 20)
+        
     final_score = min(max(final_score, 0), 100)
 
-    # Case strength threshold mapping (retains requested categories and logic)
-    if final_score <= 35:
+    # Case strength threshold mapping (0-40 weak, 41-80 moderate, 81-100 strong)
+    if final_score <= 40:
         strength = "weak"
-    elif final_score <= 65:
+    elif final_score <= 80:
         strength = "moderate"
     else:
         strength = "strong"
@@ -831,20 +862,21 @@ def score_dispute(state: DisputeState) -> DisputeState:
         f"### Dispute Score: {final_score} / 100\n"
         f"**Case Strength**: {strength.upper()}\n\n"
         f"#### Category Point Breakdown\n"
-        f"- **Policy Coverage Support**: {policy_support_score} / 30 (Assessment: *{policy_support_val}*)\n"
+        f"- **Policy Coverage Support**: {policy_support_score} points (Assessment: *{policy_support_val}*)\n"
         f"  *Reasoning*: {result.get('policy_coverage_support_reason', 'N/A')}\n"
-        f"- **Rejection Validity**: {rejection_score} / 20 (Assessment: *{rejection_val}*)\n"
+        f"- **Rejection Validity**: {rejection_score} points (Assessment: *{rejection_val}*)\n"
         f"  *Reasoning*: {result.get('rejection_validity_reason', 'N/A')}\n"
-        f"- **Waiting Period Compliance**: {waiting_score} / 15 (Assessment: *{waiting_val}*)\n"
+        f"- **Waiting Period Compliance**: {waiting_score} points (Assessment: *{waiting_val}*)\n"
         f"  *Reasoning*: {result.get('waiting_period_compliance_reason', 'N/A')}\n"
-        f"- **Coverage Strength / Exclusions**: {coverage_score} / 15 (Assessment: *{coverage_val}*)\n"
+        f"- **Coverage Strength / Exclusions**: -{exclusions_score} points (Assessment: *{exclusions_val}*)\n"
         f"  *Reasoning*: {result.get('coverage_strength_reason', 'N/A')}\n"
-        f"- **Medical Necessity**: {necessity_score} / 10 (Assessment: *{necessity_val}*)\n"
+        f"- **Medical Necessity**: {necessity_score} points (Assessment: *{necessity_val}*)\n"
         f"  *Reasoning*: {result.get('medical_necessity_reason', 'N/A')}\n"
-        f"- **Documentation Completeness**: {doc_score} / 10 (Assessment: *{doc_val}*)\n"
+        f"- **Documentation Completeness**: -{doc_score} points (Assessment: *{doc_val}*)\n"
         f"  *Reasoning*: {result.get('documentation_quality_reason', 'N/A')}\n"
-        f"- **Contradiction Severity**: {contradiction_score} / 10 (Assessment: *{contradiction_val}*)\n"
-        f"  *Reasoning*: {result.get('contradiction_severity_reason', 'N/A')}\n\n"
+        f"- **Exception Status**: {exception_score} points (Assessment: *{exception_val}*)\n"
+        f"  *Reasoning*: {result.get('exception_status_reason', 'N/A')}\n"
+        f"- **Undeniable Insurer Error**: +{error_bonus} points (Assessment: *{undeniable_error_val}*)\n\n"
         f"#### Evidence Helping the Patient\n"
     )
     
