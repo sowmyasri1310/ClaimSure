@@ -16,12 +16,13 @@ def get_chroma_client() -> "PersistentClient":
         _chroma = PersistentClient(path=path)
     return _chroma
 
-def get_embeddings_api(texts: list[str]) -> list[list[float]]:
+def get_embeddings_api(texts: list[str]) -> tuple[list[list[float]] | None, str | None]:
     """
     Tries to generate embeddings using the Hugging Face Inference API.
-    Returns None if the API request fails or is rate-limited.
+    Returns (embeddings, error_message).
     """
     import urllib.request
+    import urllib.error
     import json
     
     model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -45,13 +46,20 @@ def get_embeddings_api(texts: list[str]) -> list[list[float]]:
         with urllib.request.urlopen(req, timeout=5) as response:
             res = json.loads(response.read().decode("utf-8"))
             if isinstance(res, list) and len(res) == len(texts):
-                return res
+                return res, None
             if isinstance(res, dict) and "error" in res:
-                print(f"HF Inference API returned an error: {res['error']}")
+                return None, f"API Error: {res['error']}"
+            return None, f"Unexpected response format: {res}"
+    except urllib.error.HTTPError as e:
+        try:
+            error_body = e.read().decode("utf-8")
+        except Exception:
+            error_body = "Could not read error body"
+        print(f"HF Inference API HTTP error {e.code}: {error_body}")
+        return None, f"HTTP {e.code}: {error_body}"
     except Exception as e:
         print(f"HF Inference API request failed: {str(e)}")
-        
-    return None
+        return None, str(e)
 
 def get_embedder() -> "SentenceTransformer":
     """
@@ -65,16 +73,19 @@ def get_embedder() -> "SentenceTransformer":
         _embedder = SentenceTransformer(model_name)
     return _embedder
 
-def check_embedding_fallback(operation_name: str):
+def check_embedding_fallback(operation_name: str, hf_error: str = None):
     """
     Checks if local SentenceTransformer fallback is disabled to prevent OOM crash.
     """
     if os.getenv("RENDER") or os.getenv("DISABLE_LOCAL_EMBEDDING", "false").lower() == "true":
-        raise RuntimeError(
-            f"Hugging Face Inference API request failed during {operation_name} (possibly due to rate limits or invalid/missing HF_TOKEN). "
+        err_msg = (
+            f"Hugging Face Inference API request failed during {operation_name}. "
             "Local SentenceTransformer fallback is disabled on Render/constrained environments to prevent Out-Of-Memory (OOM) crashes. "
             "Please configure a valid 'HF_TOKEN' environment variable in your Render service settings."
         )
+        if hf_error:
+            err_msg += f" Details from Hugging Face: {hf_error}"
+        raise RuntimeError(err_msg)
 
 def embed_chunks(chunks: list[str], collection_name: str, metadata_list: list[dict]):
     """
@@ -86,10 +97,10 @@ def embed_chunks(chunks: list[str], collection_name: str, metadata_list: list[di
     chroma = get_chroma_client()
     
     # Try Hugging Face Inference API first to save memory (especially on Render Free Tier)
-    embeddings = get_embeddings_api(chunks)
+    embeddings, hf_error = get_embeddings_api(chunks)
     
     if embeddings is None:
-        check_embedding_fallback("document chunk embedding")
+        check_embedding_fallback("document chunk embedding", hf_error)
         print("Falling back to local SentenceTransformer for embedding...")
         embedder = get_embedder()
         embeddings = embedder.encode(chunks).tolist()
@@ -111,10 +122,10 @@ def hybrid_search(collection_name: str, query: str, n_results: int = 5, where: d
     chroma = get_chroma_client()
     
     # Try Hugging Face Inference API first to save memory (especially on Render Free Tier)
-    embeddings = get_embeddings_api([query])
+    embeddings, hf_error = get_embeddings_api([query])
     
     if embeddings is None:
-        check_embedding_fallback("query embedding search")
+        check_embedding_fallback("query embedding search", hf_error)
         print("Falling back to local SentenceTransformer for query embedding...")
         embedder = get_embedder()
         query_embedding = embedder.encode([query]).tolist()
