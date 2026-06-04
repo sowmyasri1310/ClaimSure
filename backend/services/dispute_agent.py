@@ -88,7 +88,7 @@ def extract_claim_info(state: DisputeState) -> DisputeState:
     
     user_message = f"Excerpts:\n{context}"
     
-    extracted = call_groq_json(system_prompt, user_message)
+    extracted = call_groq_json(system_prompt, user_message, max_tokens=512)
     state["extracted_info"] = extracted
     return state
 
@@ -134,7 +134,7 @@ def find_policy_clauses(state: DisputeState) -> DisputeState:
     
     user_message = f"Treatment: {treatment}\nRejection Reason: {rejection}\n\nPolicy Excerpts:\n{context}"
     
-    result = call_groq_json(system_prompt, user_message)
+    result = call_groq_json(system_prompt, user_message, max_tokens=1024)
     
     state["relevant_clauses"] = result.get("relevant_clauses", [])
     state["citations"] = result.get("relevant_clauses", [])
@@ -215,7 +215,7 @@ def detect_mismatches(state: DisputeState) -> DisputeState:
         f"Doctor's Report Excerpts:\n{report_text}"
     )
     
-    result = call_groq_json(system_prompt, user_message)
+    result = call_groq_json(system_prompt, user_message, max_tokens=1024)
     
     state["mismatch_found"] = bool(result.get("mismatch_found", False))
     state["misapplied_clause"] = result.get("misapplied_clause")
@@ -250,7 +250,7 @@ def score_dispute(state: DisputeState) -> DisputeState:
         f"Explanation: {state['mismatch_explanation']}"
     )
     
-    result = call_groq_json(system_prompt, user_message)
+    result = call_groq_json(system_prompt, user_message, max_tokens=512)
     
     # Validation of fields
     score = result.get("dispute_score", 50)
@@ -303,7 +303,7 @@ def generate_letter(state: DisputeState) -> DisputeState:
         f"Mismatch Explanation: {state['mismatch_explanation']}"
     )
     
-    letter_text = call_groq(system_prompt, user_message)
+    letter_text = call_groq(system_prompt, user_message, max_tokens=2048)
     
     # Ensure disclaimer is at the end if LLM forgot it
     disclaimer = "This letter was generated with AI assistance and should be reviewed before submission."

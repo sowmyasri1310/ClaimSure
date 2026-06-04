@@ -16,12 +16,12 @@ def get_groq_client() -> Groq:
         _client = Groq(api_key=api_key)
     return _client
 
-def call_groq(system_prompt: str, user_message: str) -> str:
+def call_groq(system_prompt: str, user_message: str, max_tokens: int = 1024) -> str:
     """
-    Calls Groq Chat Completion with llama-3.3-70b-versatile.
+    Calls Groq Chat Completion with llama-3.3-70b-versatile or custom model.
     """
     client = get_groq_client()
-    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
     
     response = client.chat.completions.create(
         model=model,
@@ -30,15 +30,15 @@ def call_groq(system_prompt: str, user_message: str) -> str:
             {"role": "user", "content": user_message}
         ],
         temperature=0.1,
-        max_tokens=4096
+        max_tokens=max_tokens
     )
     return response.choices[0].message.content
 
-def call_groq_json(system_prompt: str, user_message: str) -> dict:
+def call_groq_json(system_prompt: str, user_message: str, max_tokens: int = 1024) -> dict:
     """
     Calls Groq and parses the output as JSON, stripping Markdown backticks if present.
     """
-    raw = call_groq(system_prompt, user_message)
+    raw = call_groq(system_prompt, user_message, max_tokens=max_tokens)
     clean = raw.strip()
     
     # Strip markdown code blocks if the model wrapped JSON
