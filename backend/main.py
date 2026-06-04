@@ -4,9 +4,11 @@ import sys
 # Add backend directory to sys.path to allow imports when running from root directory
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+import re
 
 # Load environment variables
 load_dotenv(override=True)
@@ -22,12 +24,13 @@ allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
 if allowed_origins_env:
     origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
 else:
-    # Standard local development origins (wildcard is not allowed when allow_credentials=True)
+    # Standard local development origins and direct Vercel URL
     origins = [
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "https://claim-sure-d11s1xz3l-sowmya-sris-projects-950cb19d.vercel.app"
     ]
 
 app.add_middleware(
@@ -38,6 +41,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print("Unhandled exception occurred:", str(exc))
+    traceback.print_exc()
+    
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        allowed_pattern = r"https://.*\.vercel\.app|http://localhost:\d+|http://127.0.0.1:\d+"
+        if re.fullmatch(allowed_pattern, origin) or origin in origins:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            headers["Vary"] = "Origin"
+            
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"},
+        headers=headers
+    )
+
 
 # Import and include routers
 from routers import triage, documents, coverage, dispute, evaluation
