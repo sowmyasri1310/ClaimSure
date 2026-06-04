@@ -31,6 +31,9 @@ class DisputeState(TypedDict):
     dispute_score: Optional[int]
     score_reasoning: Optional[str]
     strength: Optional[str]
+    confidence_score: Optional[int]
+    faithfulness_score: Optional[int]
+    hallucination_risk: Optional[int]
     
     # Final output letter
     dispute_letter: Optional[str]
@@ -903,9 +906,124 @@ def score_dispute(state: DisputeState) -> DisputeState:
     if not result.get("points_deducted_reasons"):
         reasoning_md += "- No points deducted reasons documented.\n"
 
+    # ----------------------------------------------------
+    # Calculate Supplemental Quality Metrics (Evidence-Driven)
+    # ----------------------------------------------------
+    citations_list = state.get("citations") or state.get("relevant_clauses") or []
+    
+    # 1. CONFIDENCE SCORE (max 100)
+    # Retrieval & Citations (Max 20)
+    conf_retrieval = 15 if citations_list else 0
+    if structured_facts.get("waiting_period_clause_text") or structured_facts.get("coverage_clauses_text") or structured_facts.get("emergency_exceptions_text"):
+        conf_retrieval += 5
+    conf_retrieval = min(conf_retrieval, 20)
+    
+    # Evidence Completeness (Max 25)
+    if doc_val == "complete":
+        conf_completeness = 25
+    elif doc_val in ("incomplete_minor", "minor"):
+        conf_completeness = 12
+    else:
+        conf_completeness = 3
+        
+    # Clause Clarity (Max 20)
+    conf_clarity = 0
+    if policy_support_val != "ambiguous":
+        conf_clarity += 10
+    if exclusions_val != "ambiguous_exclusions":
+        conf_clarity += 10
+        
+    # Document Consistency / Date Verification (Max 20)
+    conf_consistency = 5
+    if (structured_facts.get("original_inception_date") or structured_facts.get("policy_period_start_date")) and structured_facts.get("treatment_date"):
+        if policy_start and surgery_dt:
+            conf_consistency = 20
+            
+    # Reasoning Certainty (Max 15)
+    conf_certainty = 0
+    if necessity_val == "strong":
+        conf_certainty += 10
+    elif necessity_val == "moderate":
+        conf_certainty += 5
+    if rejection_val != "ambiguous":
+        conf_certainty += 5
+        
+    confidence_score = conf_retrieval + conf_completeness + conf_clarity + conf_consistency + conf_certainty
+    confidence_score = min(max(confidence_score, 0), 100)
+    
+    # 2. FAITHFULNESS SCORE (max 100)
+    # Direct Citations (Max 40)
+    faith_citations = 5
+    if len(citations_list) >= 2:
+        faith_citations = 30
+    elif len(citations_list) == 1:
+        faith_citations = 20
+        
+    if structured_facts.get("waiting_period_clause_text") or structured_facts.get("coverage_clauses_text") or structured_facts.get("emergency_exceptions_text"):
+        faith_citations += 10
+    faith_citations = min(faith_citations, 40)
+    
+    # Fact Grounding (Max 30)
+    faith_grounding = 0
+    if structured_facts.get("treatment_date"):
+        faith_grounding += 10
+    if structured_facts.get("rejection_reason"):
+        faith_grounding += 10
+    if structured_facts.get("medical_necessity_findings_text"):
+        faith_grounding += 10
+        
+    # Document Groundedness (Max 20)
+    if doc_val == "complete":
+        faith_doc = 20
+    elif doc_val in ("incomplete_minor", "minor"):
+        faith_doc = 10
+    else:
+        faith_doc = 2
+        
+    # Traceable Reasoning (Max 10)
+    faith_reasoning = 10 if rejection_val != "ambiguous" else 5
+    
+    faithfulness_score = faith_citations + faith_grounding + faith_doc + faith_reasoning
+    faithfulness_score = min(max(faithfulness_score, 0), 100)
+    
+    # 3. HALLUCINATION RISK (max 100)
+    # Missing Source Evidence
+    if doc_val == "complete":
+        risk_missing = 2
+    elif doc_val in ("incomplete_minor", "minor"):
+        risk_missing = 15
+    else:
+        risk_missing = 40
+        
+    # Lack of Citations
+    if not citations_list:
+        risk_citations = 30
+    elif len(citations_list) == 1:
+        risk_citations = 10
+    else:
+        risk_citations = 0
+        
+    # Unverifiable Dates
+    risk_dates = 0
+    if not (structured_facts.get("original_inception_date") or structured_facts.get("policy_period_start_date")) or not structured_facts.get("treatment_date"):
+        risk_dates = 15
+    elif not policy_start or not surgery_dt:
+        risk_dates = 15
+        
+    # Conflicting/Ambiguous Wording
+    risk_wording = 0
+    if policy_support_val == "ambiguous" or rejection_val == "ambiguous":
+        risk_wording = 15
+        
+    hallucination_risk = risk_missing + risk_citations + risk_dates + risk_wording
+    hallucination_risk = min(max(hallucination_risk, 5), 95)
+
     state["dispute_score"] = final_score
     state["strength"] = strength
     state["score_reasoning"] = reasoning_md
+    state["confidence_score"] = confidence_score
+    state["faithfulness_score"] = faithfulness_score
+    state["hallucination_risk"] = hallucination_risk
     
     # Debug logging in backend logs
     print("================== DISPUTE REASONING AUDIT LOG ==================")
@@ -916,6 +1034,9 @@ def score_dispute(state: DisputeState) -> DisputeState:
     print(f"Coverage Status: {state.get('coverage_status')}")
     print(f"Mismatch Found: {mismatch_found}")
     print(f"Final Dispute Score: {final_score}")
+    print(f"Confidence Score: {confidence_score}")
+    print(f"Faithfulness Score: {faithfulness_score}")
+    print(f"Hallucination Risk: {hallucination_risk}")
     print(f"Strength Case: {strength}")
     print("=================================================================")
     

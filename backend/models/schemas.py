@@ -29,6 +29,9 @@ class DisputeResponse(BaseModel):
     strength: Literal["weak", "moderate", "strong"]
     dispute_letter: str
     citations: List[str]
+    confidence_score: int
+    faithfulness_score: int
+    hallucination_risk: int
 
 # Evaluation Schemas
 class EvaluationRequest(BaseModel):

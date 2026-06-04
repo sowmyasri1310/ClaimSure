@@ -45,6 +45,9 @@ export default function DisputeResultPage() {
 
   const score = result.dispute_score ?? 0;
   const strength = result.strength ?? "moderate";
+  const confidence = result.confidence_score ?? 0;
+  const faithfulness = result.faithfulness_score ?? 0;
+  const hallucination = result.hallucination_risk ?? 0;
   
   // Choose colors based on strength rating
   const getStrengthMeta = (str: string) => {
@@ -136,6 +139,58 @@ export default function DisputeResultPage() {
             </div>
 
             <p className="text-slate-500 text-xs px-4 leading-relaxed">{meta.text}</p>
+          </div>
+
+          {/* Supplemental Quality Metrics Card */}
+          <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 space-y-6">
+            <h3 className="font-bold text-slate-800 text-xs border-b border-slate-100 pb-3 uppercase tracking-wider text-center">
+              Analysis Quality Metrics
+            </h3>
+            
+            <div className="grid grid-cols-3 gap-4 text-center">
+              {/* Confidence Metric */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 block uppercase">Confidence</span>
+                <div className="text-2xl font-black text-indigo-600">{confidence}%</div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${confidence}%` }} />
+                </div>
+              </div>
+
+              {/* Faithfulness Metric */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 block uppercase">Faithfulness</span>
+                <div className="text-2xl font-black text-emerald-600">{faithfulness}%</div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${faithfulness}%` }} />
+                </div>
+              </div>
+
+              {/* Hallucination Risk Metric */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 block uppercase">Hallucination Risk</span>
+                <div className="text-2xl font-black text-rose-600">{hallucination}%</div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-rose-500 h-full rounded-full" style={{ width: `${hallucination}%` }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Metrics Explanations */}
+            <div className="pt-4 border-t border-slate-50 space-y-3.5 text-left text-xs">
+              <div>
+                <span className="font-bold text-slate-700 block">Confidence:</span>
+                <span className="text-slate-500 font-medium">How certain the system is about the dispute outcome.</span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-700 block">Faithfulness:</span>
+                <span className="text-slate-500 font-medium">How strongly the analysis is supported by uploaded documents.</span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-700 block">Hallucination Risk:</span>
+                <span className="text-slate-500 font-medium">Likelihood of unsupported AI-generated conclusions.</span>
+              </div>
+            </div>
           </div>
 
           {/* Audit Details */}

@@ -63,7 +63,10 @@ async def analyze_dispute(
             "dispute_score": None,
             "score_reasoning": None,
             "strength": None,
-            "dispute_letter": None
+            "dispute_letter": None,
+            "confidence_score": None,
+            "faithfulness_score": None,
+            "hallucination_risk": None
         }
 
         # Invoke the LangGraph workflow
@@ -77,7 +80,10 @@ async def analyze_dispute(
             "score_reasoning": str(result_state.get("score_reasoning", "")),
             "strength": result_state.get("strength", "moderate"),
             "dispute_letter": str(result_state.get("dispute_letter", "")),
-            "citations": list(result_state.get("citations", []))
+            "citations": list(result_state.get("citations", [])),
+            "confidence_score": int(result_state.get("confidence_score", 0)),
+            "faithfulness_score": int(result_state.get("faithfulness_score", 0)),
+            "hallucination_risk": int(result_state.get("hallucination_risk", 0))
         }
 
         # Persist case to MongoDB async
