@@ -3,15 +3,26 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 
-// Detect if we should use mock auth for testing when keys are missing
-export const isMockAuth = !supabaseUrl || !supabaseAnonKey;
+// Detect if we are on localhost
+const isLocalhost = typeof window !== 'undefined' && 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-// Real client or mock client implementation
-export const supabase = !isMockAuth
+// Only use mock auth on localhost development environments when keys are missing
+export const isMockAuth = (!supabaseUrl || !supabaseAnonKey) && isLocalhost;
+
+// Real client or mock/error client implementation
+export const supabase = (!isMockAuth && supabaseUrl && supabaseAnonKey)
   ? createClient(supabaseUrl, supabaseAnonKey)
   : {
       auth: {
         getSession: async () => {
+          // If we are not on localhost and keys are missing, return a configuration error
+          if (!isLocalhost && (!supabaseUrl || !supabaseAnonKey)) {
+            return {
+              data: { session: null },
+              error: { message: "Supabase environment variables are missing. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your Vercel settings." } as any
+            };
+          }
           if (typeof window !== 'undefined') {
             const mockUser = localStorage.getItem('claimsure_mock_user');
             if (mockUser) {
@@ -30,7 +41,16 @@ export const supabase = !isMockAuth
           return { data: { session: null }, error: null };
         },
         onAuthStateChange: (callback: any) => {
-          // Trigger first callback invocation with current session
+          if (!isLocalhost && (!supabaseUrl || !supabaseAnonKey)) {
+            callback('SIGNED_OUT', null);
+            return {
+              data: {
+                subscription: {
+                  unsubscribe: () => {}
+                }
+              }
+            };
+          }
           if (typeof window !== 'undefined') {
             const mockUser = localStorage.getItem('claimsure_mock_user');
             if (mockUser) {
@@ -49,6 +69,12 @@ export const supabase = !isMockAuth
           };
         },
         signUp: async ({ email, password }: any) => {
+          if (!isLocalhost && (!supabaseUrl || !supabaseAnonKey)) {
+            return {
+              data: { user: null, session: null },
+              error: { message: "Supabase environment variables are missing. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your Vercel settings." } as any
+            };
+          }
           const user = { 
             id: 'mock-supabase-user-uuid', 
             email, 
@@ -66,6 +92,12 @@ export const supabase = !isMockAuth
           };
         },
         signInWithPassword: async ({ email, password }: any) => {
+          if (!isLocalhost && (!supabaseUrl || !supabaseAnonKey)) {
+            return {
+              data: { user: null, session: null },
+              error: { message: "Supabase environment variables are missing. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your Vercel settings." } as any
+            };
+          }
           const user = { 
             id: 'mock-supabase-user-uuid', 
             email, 
