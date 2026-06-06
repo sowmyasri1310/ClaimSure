@@ -172,7 +172,7 @@ LANGCHAIN_PROJECT=claimsure
 
 # 📺 Demo Link
 🎥 Walkthrough Video: 
-
+https://drive.google.com/file/d/1nNXqFeV8DKVORkGLHoCPvlyRjGbzJ4DH/view?usp=sharing
 
 # 🚀 Tech Stack
 Frontend: Next.js 14 (App Router) + Tailwind CSS + Lucide Icons + Supabase Auth
@@ -225,6 +225,7 @@ Multi-Document Cross-Referencing: Traditional RAG architectures query a single t
 
 Hallucination Prevention in Legal Contexts: To protect patients from generating invalid legal appeals, a rigid grounding system was implemented. The system relies on isolated vector lookups with precise context injection, combined with a dedicated "Clause Mismatch" validation node that drops unverified data.
 
+
 # 🛠️ How It Works
 LangGraph Claims Agent Workflow
 The Dispute Resolution feature runs a stateful LangGraph agent through these 6 distinct nodes:
@@ -241,8 +242,9 @@ score_dispute: Scores the dispute from 0-100 and classifies standing strength as
 
 generate_letter: Formulates a formal medical claim appeal letter citing medical codes, bills, and policy sections, appended with an AI disclaimer.
 
-👤 Author Info
- Sowmya sri Vemuri - https://github.com/sowmyasri1310
+
+# 👤 Author Info
+Sowmya sri Vemuri - https://github.com/sowmyasri1310
 
 Project Link: https://github.com/sowmyasri1310/ClaimSure
 
@@ -254,4 +256,3 @@ In India’s healthcare ecosystem, middle-income families face a crushing financ
 
 This issue is compounded by a lack of structured, localized medical guidance, which causes patients to misjudge symptom urgency—either overwhelming emergency rooms or delaying critical care. When a wrongful rejection does occur, patients lack the legal expertise, time, and multi-document reasoning required to audit medical bills against policy clauses and draft formal appeals. This manual dispute process is too slow and complex for the average citizen, allowing insurance companies to default on valid payouts while patients suffer the financial consequences silently.
 
-# Screenshots
