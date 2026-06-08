@@ -155,7 +155,7 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:10000
 2. Backend Configuration (backend/.env)
 ```env
 GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=llama-3.1-8B-instant
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_secret_key
 MONGODB_URI=your_mongodb_connection_uri
@@ -185,7 +185,7 @@ Database: MongoDB Atlas (async operations via Motor)
 
 Auth: Supabase Auth (JWT session checking)
 
-LLM: Groq API (llama-3.3-70b-versatile)
+LLM: Groq API (llama-3.1-8B-instant)
 
 Embeddings: sentence-transformers (all-MiniLM-L6-v2)
 
